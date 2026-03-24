@@ -1,0 +1,59 @@
+version: 1
+updated_at: "2026-02-22T00:00:00Z"
+services:
+  jarvis-core:
+    enabled: true
+    owner: core-team
+    models:
+      planner:
+        provider: openai
+        model: gpt-4.1
+        temperature: 0.2
+        max_tokens: 1200
+      fast_path:
+        provider: openai
+        model: gpt-4.1-mini
+        temperature: 0.1
+        max_tokens: 500
+    prompts:
+      system: |
+        You are Jarvis Core.
+        Focus on reasoning quality, planning clarity, and safe decision making.
+      router_fast_hint: "Use concise response mode when task is simple."
+      router_deep_hint: "Use deep reasoning mode for long or analytical tasks."
+
+  jarvis-controller:
+    enabled: true
+    owner: controller-team
+    models:
+      action_parser:
+        provider: openai
+        model: gpt-4.1-mini
+        temperature: 0.0
+        max_tokens: 300
+    prompts:
+      system: |
+        You are Jarvis Controller.
+        Translate plans into executable tool actions with strict schema compliance.
+      verify: "Return deterministic verification status and concise failure reason."
+
+  jarvis-gateway:
+    enabled: true
+    owner: platform-team
+    models:
+      policy_assist:
+        provider: openai
+        model: gpt-4.1-mini
+        temperature: 0.0
+        max_tokens: 400
+    prompts:
+      system: |
+        You are Jarvis Gateway policy assistant.
+        Prioritize auth, tenancy boundary, and auditability.
+
+  jarvis-contracts:
+    enabled: true
+    owner: platform-team
+    models: {}
+    prompts:
+      compatibility_policy: "Major mismatch blocks traffic. Minor is additive only."

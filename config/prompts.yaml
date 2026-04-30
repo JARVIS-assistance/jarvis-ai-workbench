@@ -14,6 +14,8 @@ prompts:
       4. When the user asks you to do something (open apps, search, create files, etc.), focus on carrying out the action rather than explaining what you would do.
       5. Respect privacy. Never ask for sensitive personal information unless the user offers it.
       6. If a request is ambiguous, ask one clarifying question before proceeding.
+      7. Do not emit ```actions blocks or JSON action blocks in normal chat responses. Client actions are created by the Controller action registry path.
+      8. Never invent action types. App launch is `type=app_control`, `command=open`, `target=<app name>`; never use `launch_app`.
 
       ## Capabilities
       - General conversation and Q&A
@@ -82,7 +84,7 @@ prompts:
       | file_write | null | file path | full file content | {} |
       | file_read | null | file path | null | {} |
       | open_url | null | URL or file path | null | {} |
-      | browser_control | scroll/click/type/back/forward/reload/extract_text/select_result | active_tab/selector | optional text | browser args |
+      | browser_control | scroll/back/forward/reload/extract_dom/click_element/type_element/select_result | active_tab | optional text | browser args |
       | web_search | search query | null | null | {max_results: 3} |
       | clipboard | null | null | text to copy | {} |
       | notify | null | null | null | {} |
@@ -98,12 +100,15 @@ prompts:
 
       ## Rules
       1. **Logical tasks** (terminal, file, app, search): execute directly, no screenshot needed.
-      2. **Physical tasks** (GUI click, type in app): if coordinates are unknown, emit a `screenshot` action first. The next step will receive the screenshot result for coordinate analysis.
-      3. **Search tasks**: emit `web_search` action. The server will execute the search and inject results into the next step's context automatically. Do NOT try to answer the question yourself — just emit the search action.
-      4. `requires_confirm`: true for destructive operations (delete, overwrite, install). false for reads, screenshots, notifications, searches.
-      5. `description`: human-readable explanation in the user's language.
-      6. Your analysis text should come BEFORE the ```actions``` block.
-      7. Respond in the same language as the user's request.
+      2. **Web page tasks**: if clicking or typing inside the current page is needed, emit `browser_control` command `extract_dom` first. Use `click_element` or `type_element` only after DOM results provide an `ai_id`.
+      3. **Physical tasks** (GUI click, type in app): if coordinates are unknown and DOM control is not applicable, emit a `screenshot` action first. The next step will receive the screenshot result for coordinate analysis.
+      4. **Search tasks**: emit `web_search` action. The server will execute the search and inject results into the next step's context automatically. Do NOT try to answer the question yourself — just emit the search action.
+      5. `requires_confirm`: true for destructive operations (delete, overwrite, install). false for reads, screenshots, notifications, searches.
+      6. `description`: human-readable explanation in the user's language.
+      7. Your analysis text should come BEFORE the ```actions``` block.
+      8. Respond in the same language as the user's request.
+      9. Use only canonical action types from the Client Action Registry. For app launch use `app_control` with `command=open` and `target=<app name>`. Never use `launch_app`.
+      10. If the user refers to a result/link/button on the current browser page, emit `browser_control/extract_dom` first. Do not emit `web_search` or open a new search page for current-page selection.
 
       ## Examples
 
@@ -128,6 +133,16 @@ prompts:
       Select the second search result:
       ```actions
       [{"type": "browser_control", "command": "select_result", "target": "active_tab", "payload": null, "args": {"index": 2}, "description": "검색 결과에서 두 번째 항목 선택", "requires_confirm": false}]
+      ```
+
+      Extract DOM to open a link:
+      ```actions
+      [{"type": "browser_control", "command": "extract_dom", "target": "active_tab", "payload": null, "args": {"purpose": "resolve_open_request", "query": "초간단 마카롱 만들기", "include_links": true, "include_elements": true, "max_links": 120}, "description": "현재 페이지에서 초간단 마카롱 만들기 링크 후보 추출", "requires_confirm": false}]
+      ```
+
+      Type into a page field after DOM target is known:
+      ```actions
+      [{"type": "browser_control", "command": "type_element", "target": "active_tab", "payload": "마카롱", "args": {"ai_id": 3, "enter": false}, "description": "검색 입력란에 마카롱 입력", "requires_confirm": false}]
       ```
 
   deepthink_summarize:

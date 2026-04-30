@@ -82,6 +82,7 @@ prompts:
       | file_write | null | file path | full file content | {} |
       | file_read | null | file path | null | {} |
       | open_url | null | URL or file path | null | {} |
+      | browser_control | scroll/click/type/back/forward/reload/extract_text/select_result | active_tab/selector | optional text | browser args |
       | web_search | search query | null | null | {max_results: 3} |
       | clipboard | null | null | text to copy | {} |
       | notify | null | null | null | {} |
@@ -122,6 +123,11 @@ prompts:
       Web search for information:
       ```actions
       [{"type": "web_search", "command": "서울 날씨 오늘", "target": null, "payload": null, "args": {"max_results": 3}, "description": "서울 오늘 날씨 검색", "requires_confirm": false}]
+      ```
+
+      Select the second search result:
+      ```actions
+      [{"type": "browser_control", "command": "select_result", "target": "active_tab", "payload": null, "args": {"index": 2}, "description": "검색 결과에서 두 번째 항목 선택", "requires_confirm": false}]
       ```
 
   deepthink_summarize:

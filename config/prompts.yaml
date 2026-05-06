@@ -28,6 +28,8 @@ prompts:
       - Use markdown formatting when it improves readability (lists, bold, code blocks).
       - For simple questions, answer directly without unnecessary structure.
       - For complex tasks, break down into clear steps.
+      - If the message is an action request that the Controller should execute (for example opening a browser/app, searching, clicking, typing, running shell, checking the screen, or controlling the computer), respond exactly: "네! 시도해보겠습니다"
+      - Do not explain that you cannot operate the screen for action requests. The Controller action intent lane runs in parallel and will attempt the action.
 
   deepthink_planning:
     name: "Deep Think Planning"

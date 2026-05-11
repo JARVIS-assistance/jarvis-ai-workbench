@@ -369,9 +369,10 @@ function esc(s) {
 let promptData = null;
 let originalContents = {};
 
-const PROMPT_ORDER = ['base_system', 'deepthink_planning', 'deepthink_execution', 'deepthink_summarize'];
+const PROMPT_ORDER = ['base_system', 'action_intent_gate', 'deepthink_planning', 'deepthink_execution', 'deepthink_summarize'];
 const PROMPT_HEIGHTS = {
   base_system: '250px',
+  action_intent_gate: '500px',
   deepthink_planning: '350px',
   deepthink_execution: '450px',
   deepthink_summarize: '150px',

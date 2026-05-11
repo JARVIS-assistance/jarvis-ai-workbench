@@ -6,6 +6,7 @@ prompts.yaml 파일을 읽고 쓰며, Core 서비스에서도 동일 파일을 �
 
 from __future__ import annotations
 
+import ast
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -13,26 +14,97 @@ from typing import Any
 import yaml
 
 
+def _default_prompt_from_python(
+    relative_path: str,
+    constant_name: str,
+    fallback: str,
+) -> str:
+    source_path = Path(__file__).resolve().parents[3] / relative_path
+    try:
+        module = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in module.body:
+            if not isinstance(node, ast.Assign):
+                continue
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == constant_name:
+                    value = ast.literal_eval(node.value)
+                    if isinstance(value, str) and value.strip():
+                        return value
+    except Exception:
+        pass
+
+    return fallback
+
+
+def _default_action_intent_gate_prompt() -> str:
+    return (
+        _default_prompt_from_python(
+            "jarvis_controller/src/planner/action_gate.py",
+            "_INTENT_GATE_PROMPT_FALLBACK",
+            "You are JARVIS Action Intent Gate.\n"
+            "Output only valid JSON. Do not answer the user. "
+            "Decide whether the user asks JARVIS to operate the local computer.",
+        )
+    )
+
+
+def _default_chat_base_prompt() -> str:
+    return _default_prompt_from_python(
+        "jarvis_core/src/application/chat/service.py",
+        "_BASE_SYSTEM_PROMPT_FALLBACK",
+        "You are JARVIS — an intelligent AI assistant system.",
+    )
+
+
+def _default_deepthink_planning_prompt() -> str:
+    return _default_prompt_from_python(
+        "jarvis_core/src/application/deepthink/service.py",
+        "_PLANNING_SYSTEM_PROMPT_FALLBACK",
+        "You are JARVIS deep-thinking planning engine.",
+    )
+
+
+def _default_deepthink_execution_prompt() -> str:
+    return _default_prompt_from_python(
+        "jarvis_core/src/application/deepthink/service.py",
+        "_EXECUTION_SYSTEM_PROMPT_FALLBACK",
+        "You are JARVIS deep-thinking execution engine.",
+    )
+
+
+def _default_deepthink_summarize_prompt() -> str:
+    return _default_prompt_from_python(
+        "jarvis_core/src/application/deepthink/service.py",
+        "_SUMMARIZE_SYSTEM_PROMPT_FALLBACK",
+        "You are JARVIS. Summarize the search results concisely.",
+    )
+
+
 _DEFAULT_PROMPTS: dict[str, dict[str, str]] = {
     "base_system": {
         "name": "Base System Prompt",
         "description": "모든 대화에 적용되는 JARVIS 기본 시스템 프롬프트",
-        "content": "You are JARVIS — an intelligent AI assistant system.",
+        "content": _default_chat_base_prompt(),
     },
     "deepthink_planning": {
         "name": "Deep Think Planning",
         "description": "딥씽킹 플래닝 단계 프롬프트",
-        "content": "You are JARVIS deep-thinking planning engine.",
+        "content": _default_deepthink_planning_prompt(),
     },
     "deepthink_execution": {
         "name": "Deep Think Execution",
         "description": "딥씽킹 실행 단계 프롬프트",
-        "content": "You are JARVIS deep-thinking execution engine.",
+        "content": _default_deepthink_execution_prompt(),
     },
     "deepthink_summarize": {
         "name": "Deep Think Summarize",
         "description": "검색 결과 요약 프롬프트",
-        "content": "You are JARVIS. Summarize the search results concisely.",
+        "content": _default_deepthink_summarize_prompt(),
+    },
+    "action_intent_gate": {
+        "name": "Action Intent Gate Prompt",
+        "description": "사용자 발화를 로컬 컴퓨터 액션으로 실행할지 판단하는 인텐트 게이트 프롬프트",
+        "content": _default_action_intent_gate_prompt(),
     },
 }
 
@@ -48,8 +120,9 @@ class PromptStore:
         with self.config_path.open("r", encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
 
-        if "prompts" not in data:
-            data["prompts"] = dict(_DEFAULT_PROMPTS)
+        prompts = data.setdefault("prompts", {})
+        for key, prompt in _DEFAULT_PROMPTS.items():
+            prompts.setdefault(key, dict(prompt))
         return data
 
     def load_prompt(self, key: str) -> str | None:

@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from jarvis_ai_workbench.app import create_app
+from jarvis_ai_workbench.prompt_store import PromptStore
 
 
 def make_client(tmp_path: Path) -> TestClient:
@@ -62,3 +63,34 @@ def test_put_config_requires_services(tmp_path: Path) -> None:
         response = client.put("/api/config", json=payload)
 
     assert response.status_code == 400
+
+
+def test_prompt_store_merges_action_intent_gate_default(tmp_path: Path) -> None:
+    prompts_path = tmp_path / "prompts.yaml"
+    prompts_path.write_text(
+        """
+version: 1
+prompts:
+  base_system:
+    name: Base
+    description: test
+    content: base prompt
+""",
+        encoding="utf-8",
+    )
+
+    data = PromptStore(prompts_path).load()
+
+    assert "action_intent_gate" in data["prompts"]
+    assert "Action Intent Gate" in data["prompts"]["action_intent_gate"]["name"]
+    assert "한식 레츠고" in data["prompts"]["action_intent_gate"]["content"]
+
+
+def test_prompt_store_uses_service_py_fallbacks_for_defaults(tmp_path: Path) -> None:
+    data = PromptStore(tmp_path / "missing-prompts.yaml").load()
+    prompts = data["prompts"]
+
+    assert "## Core rules" in prompts["base_system"]["content"]
+    assert "produce a structured execution plan as JSON" in prompts["deepthink_planning"]["content"]
+    assert "Include actions in a JSON array fenced" in prompts["deepthink_execution"]["content"]
+    assert "Do NOT include action blocks" in prompts["deepthink_summarize"]["content"]

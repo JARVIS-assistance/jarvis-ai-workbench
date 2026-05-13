@@ -7,6 +7,7 @@ prompts.yaml 파일을 읽고 쓰며, Core 서비스에서도 동일 파일을 �
 from __future__ import annotations
 
 import ast
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,14 @@ def _default_chat_base_prompt() -> str:
     )
 
 
+def _default_realtime_system_prompt() -> str:
+    return _default_prompt_from_python(
+        "jarvis_core/src/application/chat/service.py",
+        "_REALTIME_COMPACT_SYSTEM_PROMPT",
+        "너는 JARVIS. 한국어로 짧게 답해. 컴퓨터 조작 요청은 '진행하겠습니다!'만 출력.",
+    )
+
+
 def _default_deepthink_planning_prompt() -> str:
     return _default_prompt_from_python(
         "jarvis_core/src/application/deepthink/service.py",
@@ -86,6 +95,11 @@ _DEFAULT_PROMPTS: dict[str, dict[str, str]] = {
         "description": "모든 대화에 적용되는 JARVIS 기본 시스템 프롬프트",
         "content": _default_chat_base_prompt(),
     },
+    "realtime_system": {
+        "name": "Realtime System Prompt",
+        "description": "Ollama realtime/e2b 채팅에 적용되는 짧은 시스템 프롬프트",
+        "content": _default_realtime_system_prompt(),
+    },
     "deepthink_planning": {
         "name": "Deep Think Planning",
         "description": "딥씽킹 플래닝 단계 프롬프트",
@@ -103,7 +117,10 @@ _DEFAULT_PROMPTS: dict[str, dict[str, str]] = {
     },
     "action_intent_gate": {
         "name": "Action Intent Gate Prompt",
-        "description": "사용자 발화를 로컬 컴퓨터 액션으로 실행할지 판단하는 인텐트 게이트 프롬프트",
+        "description": (
+            "사용자 발화를 로컬 컴퓨터 액션으로 실행할지 판단하는 "
+            "인텐트 게이트 프롬프트"
+        ),
         "content": _default_action_intent_gate_prompt(),
     },
 }
@@ -122,7 +139,7 @@ class PromptStore:
 
         prompts = data.setdefault("prompts", {})
         for key, prompt in _DEFAULT_PROMPTS.items():
-            prompts.setdefault(key, dict(prompt))
+            prompts.setdefault(key, deepcopy(prompt))
         return data
 
     def load_prompt(self, key: str) -> str | None:
@@ -163,7 +180,7 @@ class PromptStore:
         return {
             "version": 1,
             "updated_at": self._now_iso(),
-            "prompts": dict(_DEFAULT_PROMPTS),
+            "prompts": deepcopy(_DEFAULT_PROMPTS),
         }
 
     @staticmethod

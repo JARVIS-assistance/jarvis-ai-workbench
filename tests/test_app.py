@@ -8,7 +8,8 @@ from jarvis_ai_workbench.prompt_store import PromptStore
 
 def make_client(tmp_path: Path) -> TestClient:
     config_path = tmp_path / "ai.yaml"
-    app = create_app(config_path=config_path)
+    prompt_path = tmp_path / "prompts.yaml"
+    app = create_app(config_path=config_path, prompt_path=prompt_path)
     return TestClient(app)
 
 
@@ -82,6 +83,7 @@ prompts:
     data = PromptStore(prompts_path).load()
 
     assert "action_intent_gate" in data["prompts"]
+    assert "realtime_system" in data["prompts"]
     assert "Action Intent Gate" in data["prompts"]["action_intent_gate"]["name"]
     assert "한식 레츠고" in data["prompts"]["action_intent_gate"]["content"]
 
@@ -91,6 +93,20 @@ def test_prompt_store_uses_service_py_fallbacks_for_defaults(tmp_path: Path) -> 
     prompts = data["prompts"]
 
     assert "## Core rules" in prompts["base_system"]["content"]
+    assert "진행하겠습니다!" in prompts["realtime_system"]["content"]
     assert "produce a structured execution plan as JSON" in prompts["deepthink_planning"]["content"]
     assert "Include actions in a JSON array fenced" in prompts["deepthink_execution"]["content"]
     assert "Do NOT include action blocks" in prompts["deepthink_summarize"]["content"]
+
+
+def test_prompt_api_preserves_long_prompt_content(tmp_path: Path) -> None:
+    long_prompt = "긴 프롬프트 제한 제거 확인\n" + ("규칙을 그대로 보존합니다.\n" * 2000)
+
+    with make_client(tmp_path) as client:
+        saved = client.put("/api/prompts/realtime_system", json={"content": long_prompt})
+        assert saved.status_code == 200
+
+        fetched = client.get("/api/prompts/realtime_system")
+
+    assert fetched.status_code == 200
+    assert fetched.json()["content"] == long_prompt

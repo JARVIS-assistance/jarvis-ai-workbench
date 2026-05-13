@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +14,7 @@ from .schemas import ConfigEnvelope
 
 
 def _workspace_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+    return Path(__file__).resolve().parents[2]
 
 
 # ── Prompt API 스키마 ──────────────────────────────────────
@@ -23,11 +23,22 @@ class PromptUpdateRequest(BaseModel):
     content: str
 
 
-def create_app(config_path: Path | None = None) -> FastAPI:
+def create_app(
+    config_path: Path | None = None,
+    prompt_path: Path | None = None,
+) -> FastAPI:
     app = FastAPI(title="jarvis-ai-workbench", version="0.2.0")
     root = _workspace_root()
     store = ConfigStore(config_path or root / "config" / "jarvis-ai.yaml")
-    prompt_store = PromptStore(root / "config" / "prompts.yaml")
+    resolved_prompt_path = prompt_path
+    if resolved_prompt_path is None:
+        prompt_path_env = os.getenv("JARVIS_PROMPTS_YAML")
+        resolved_prompt_path = (
+            Path(prompt_path_env)
+            if prompt_path_env
+            else root / "config" / "prompts.yaml"
+        )
+    prompt_store = PromptStore(resolved_prompt_path)
 
     # ── Health ─────────────────────────────────────────────
     @app.get("/health")
@@ -324,7 +335,14 @@ def _render_html() -> str:
 
     <!-- ═══ Config Tab ═══ -->
     <div id="tab-config" class="tab-panel">
-      <div id="config-meta" style="padding:10px 12px; background:#ecfeff; border:1px solid #a5f3fc; border-radius:12px; margin-bottom:16px; font-size:14px;">
+      <div id="config-meta" style="
+        padding:10px 12px;
+        background:#ecfeff;
+        border:1px solid #a5f3fc;
+        border-radius:12px;
+        margin-bottom:16px;
+        font-size:14px;
+      ">
         Loading...
       </div>
       <div id="config-cards" class="config-grid"></div>
@@ -369,9 +387,17 @@ function esc(s) {
 let promptData = null;
 let originalContents = {};
 
-const PROMPT_ORDER = ['base_system', 'action_intent_gate', 'deepthink_planning', 'deepthink_execution', 'deepthink_summarize'];
+const PROMPT_ORDER = [
+  'base_system',
+  'realtime_system',
+  'action_intent_gate',
+  'deepthink_planning',
+  'deepthink_execution',
+  'deepthink_summarize',
+];
 const PROMPT_HEIGHTS = {
   base_system: '250px',
+  realtime_system: '150px',
   action_intent_gate: '500px',
   deepthink_planning: '350px',
   deepthink_execution: '450px',
@@ -385,7 +411,10 @@ function renderPrompts(data) {
   container.innerHTML = '';
   const prompts = data.prompts || {};
 
-  const keys = [...PROMPT_ORDER.filter(k => k in prompts), ...Object.keys(prompts).filter(k => !PROMPT_ORDER.includes(k))];
+  const keys = [
+    ...PROMPT_ORDER.filter(k => k in prompts),
+    ...Object.keys(prompts).filter(k => !PROMPT_ORDER.includes(k)),
+  ];
 
   for (const key of keys) {
     const p = prompts[key];
@@ -515,7 +544,9 @@ function renderConfig(cfg) {
     div.innerHTML = `
       <h3>${esc(name)}</h3>
       <div class="kv">enabled=${item.enabled} | owner=${item.owner || '-'}</div>
-      <textarea class="config-editor" id="ce-${name}">${esc(JSON.stringify(item, null, 2))}</textarea>
+      <textarea class="config-editor" id="ce-${name}">
+        ${esc(JSON.stringify(item, null, 2))}
+      </textarea>
     `;
     cards.appendChild(div);
   }
@@ -531,7 +562,11 @@ async function loadConfig() {
 
 async function saveConfig() {
   if (!configData) return;
-  const next = { version: configData.version || 1, updated_at: configData.updated_at, services: {} };
+  const next = {
+    version: configData.version || 1,
+    updated_at: configData.updated_at,
+    services: {},
+  };
   for (const name of Object.keys(configData.services || {})) {
     const ta = document.getElementById('ce-' + name);
     try { next.services[name] = JSON.parse(ta.value); }

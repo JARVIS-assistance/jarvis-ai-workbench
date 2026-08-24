@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import hmac
 import os
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -15,6 +16,22 @@ from .schemas import ConfigEnvelope
 
 def _workspace_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _require_workbench_token(authorization: str | None = Header(default=None)) -> None:
+    """Gate mutating endpoints behind JARVIS_WORKBENCH_TOKEN, if configured.
+
+    This is a dev-tool config editor other services read prompts/config from
+    on disk, not a login system. Left open when no token is configured (pure
+    local dev); set JARVIS_WORKBENCH_TOKEN before exposing this beyond
+    localhost so PUT requests require it.
+    """
+    token = os.getenv("JARVIS_WORKBENCH_TOKEN", "").strip()
+    if not token:
+        return
+    provided = (authorization or "").removeprefix("Bearer ").strip()
+    if not provided or not hmac.compare_digest(provided, token):
+        raise HTTPException(status_code=401, detail="invalid or missing workbench token")
 
 
 # ── Prompt API 스키마 ──────────────────────────────────────
@@ -50,7 +67,11 @@ def create_app(
     def get_config() -> dict[str, Any]:
         return store.load()
 
-    @app.put("/api/config", response_model=ConfigEnvelope)
+    @app.put(
+        "/api/config",
+        response_model=ConfigEnvelope,
+        dependencies=[Depends(_require_workbench_token)],
+    )
     def put_config(payload: ConfigEnvelope) -> dict[str, Any]:
         if not payload.services:
             raise HTTPException(status_code=400, detail="services must not be empty")
@@ -61,7 +82,7 @@ def create_app(
     def get_prompts() -> dict[str, Any]:
         return prompt_store.load()
 
-    @app.put("/api/prompts")
+    @app.put("/api/prompts", dependencies=[Depends(_require_workbench_token)])
     def put_prompts(payload: dict[str, Any]) -> dict[str, Any]:
         if "prompts" not in payload:
             raise HTTPException(status_code=400, detail="prompts field required")
@@ -75,7 +96,7 @@ def create_app(
             raise HTTPException(status_code=404, detail=f"prompt '{key}' not found")
         return {"key": key, **prompt}
 
-    @app.put("/api/prompts/{key}")
+    @app.put("/api/prompts/{key}", dependencies=[Depends(_require_workbench_token)])
     def put_prompt(key: str, body: PromptUpdateRequest) -> dict[str, Any]:
         prompt_store.update_prompt(key, body.content)
         return {"key": key, "content": body.content, "status": "saved"}
@@ -313,6 +334,12 @@ def _render_html() -> str:
       <h1>Jarvis AI Workbench</h1>
       <div class="sub">Prompt Engineering &amp; System Configuration</div>
     </div>
+    <input
+      id="workbench-token"
+      type="password"
+      placeholder="Workbench token (if configured)"
+      style="border:1px solid var(--border); border-radius:8px; padding:6px 10px; font-size:12px; width:220px;"
+    />
   </div>
 
   <div class="tab-bar">
@@ -379,6 +406,17 @@ function toast(msg, ok = true) {
 
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Workbench token (only enforced server-side if JARVIS_WORKBENCH_TOKEN set) ──
+const tokenInput = document.getElementById('workbench-token');
+try { tokenInput.value = localStorage.getItem('workbench_token') || ''; } catch (e) {}
+tokenInput.addEventListener('change', () => {
+  try { localStorage.setItem('workbench_token', tokenInput.value); } catch (e) {}
+});
+function authHeaders() {
+  const token = tokenInput.value.trim();
+  return token ? { 'Authorization': 'Bearer ' + token } : {};
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -483,7 +521,7 @@ async function saveOnePrompt(key) {
   try {
     const res = await fetch('/api/prompts/' + key, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ content: ta.value }),
     });
     if (!res.ok) throw new Error(await res.text());
@@ -514,7 +552,7 @@ async function saveAllPrompts() {
   try {
     const res = await fetch('/api/prompts', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(next),
     });
     if (!res.ok) throw new Error(await res.text());
@@ -575,7 +613,7 @@ async function saveConfig() {
   try {
     const res = await fetch('/api/config', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(next),
     });
     if (!res.ok) throw new Error(await res.text());
